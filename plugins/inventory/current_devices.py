@@ -3,20 +3,20 @@
 
 
 DOCUMENTATION = """
-    name: current_hosts 
+    name: current_devices
     author: Emil Harvey (@ehharvey) <emil.h.harvey@outlook.com>
-    version_added: "0.0.1"
+    version_added: 1.0.0
     short_description: Creates a dynamic inventory from current hosts on TailScale.
     description: >-
         Creates a dynamic inventory from current hosts on TailScale.
     options:
         plugin:
-            description: token that ensures this is a source file for the 'current_hosts' plugin.
+            description: token that ensures this is a source file for the 'current_devices' plugin.
             required: false
-            choices: 
-                - 'current_hosts'
-                - "ehharvey.tailscale.current_hosts"
-                - "tailscale.current_hosts"
+            choices:
+                - 'current_devices'
+                - "ehharvey.tailscale.current_devices"
+                - "tailscale.current_devices"
         api_key:
             description: TailScale API key.
             required: false
@@ -32,49 +32,57 @@ DOCUMENTATION = """
                 - hostname
                 - fqdn
         match_inventory_hostname:
-            description: Match existing hosts with this vaiable, used to lookup fact in TailScale API.
+            description: >
+                Key to use, for each device pulled from the TailScale API, to match
+                device value against the inventory hostname.
             required: false
             default: "hostname"
-             
 """
 
-from dataclasses import dataclass
-from pathlib import Path
-from typing import Iterable, List, Literal, Tuple, Union
+from typing import List, Literal, Union
 from ansible.plugins.inventory import BaseInventoryPlugin
-from ansible.errors import AnsibleError, AnsibleParserError
-from ansible.module_utils._text import to_native
-import requests
+from ansible.errors import AnsibleParserError
 
-def get_hosts(api_key: str, 
-              overwrite_ansible_host: Union[bool, 
-                                            Literal["ip",
-                                                    "ipv4",
-                                                    "ipv6",
-                                                    "hostname",
-                                                    "fqdn"]] = False,
-              match_inventory_hostname: str = "hostname") -> List[dict]:
-    
+REQUEST_IMPORT_FAILED = False
+try:
+    import requests
+except ImportError:
+    REQUEST_IMPORT_FAILED = True
+
+
+def get_hosts(
+    api_key: str,
+    overwrite_ansible_host: Union[
+        bool, Literal["ip", "ipv4", "ipv6", "hostname", "fqdn"]
+    ] = False,
+    match_inventory_hostname: str = "hostname",
+) -> List[dict]:
     results = []
-    
-    devices_request = requests.get(
-            url="https://api.tailscale.com/api/v2/tailnet/-/devices",
-            headers={
-                "Authorization": f"Bearer {api_key}"
-                # "Authorization": f"Bearer tskey-api-kXX73L4CNTRL-SL7EZ8i7YibtkM9f5bAqfbzLahMLQjyn3"
-            }
+
+    if REQUEST_IMPORT_FAILED:
+        raise AnsibleParserError(
+            "The 'current_devices' plugin requires the 'requests' python module."
         )
-        
-    devices_json  = devices_request.json()
+
+    devices_request = requests.get(
+        url="https://api.tailscale.com/api/v2/tailnet/-/devices",
+        headers={
+            "Authorization": f"Bearer {api_key}"
+            # "Authorization": f"Bearer tskey-api-kXX73L4CNTRL-SL7EZ8i7YibtkM9f5bAqfbzLahMLQjyn3"
+        },
+    )
+
+    devices_json = devices_request.json()
 
     for device in devices_json["devices"]:
         # check if the host is already in the inventory
         if match_inventory_hostname not in device:
-            raise AnsibleParserError(f"match_inventory_hostname \
+            raise AnsibleParserError(
+                f"match_inventory_hostname \
                                         '{match_inventory_hostname}' not found in device\n\
-                                        device: {device}")
+                                        device: {device}"
+            )
 
-        
         ipv4_address = device["addresses"][0]
         ipv6_address = device["addresses"][1]
         hostname = device["hostname"]
@@ -92,18 +100,17 @@ def get_hosts(api_key: str,
         # add ansible_host, if not false
         if overwrite_ansible_host:
             if not ansible_host:
-                raise AnsibleParserError(f"INTERNAL ERROR: ansible_host is not set")
-            
+                raise AnsibleParserError("INTERNAL ERROR: ansible_host is not set")
+
             device["ansible_host"] = ansible_host
-        
+
         results.append(device)
-    
+
     return results
-        
-    
+
 
 class InventoryModule(BaseInventoryPlugin):
-    NAME = "current_hosts"
+    NAME = "current_devices"
 
     def verify_file(self, path):
         """return true/false if this is possibly a valid file for this plugin to consume"""
@@ -121,35 +128,33 @@ class InventoryModule(BaseInventoryPlugin):
         overwrite_ansible_host = config.get("overwrite_ansible_host", False)
         match_inventory_hostname = config.get("match_inventory_hostname", "hostname")
         api_key = config.get("api_key")
-        
+
         if not api_key:
             raise AnsibleParserError("api_key is required")
 
-        devices = get_hosts(api_key=api_key,
-                            overwrite_ansible_host=overwrite_ansible_host,
-                            match_inventory_hostname=match_inventory_hostname)
-        
+        devices = get_hosts(
+            api_key=api_key,
+            overwrite_ansible_host=overwrite_ansible_host,
+            match_inventory_hostname=match_inventory_hostname,
+        )
+
         inventory.add_group("tailscale")
 
         for device in devices:
-            
             if device[match_inventory_hostname] not in inventory.hosts:
                 # add the host to the inventory if it does not exist
                 inventory.add_host(device[match_inventory_hostname], "all")
-            
- 
+
             inventory.add_child("tailscale", device[match_inventory_hostname])
-        
-        
+
             # add all device facts under tailscale key
-            inventory.set_variable(device[match_inventory_hostname], 
-                                   "tailscale", 
-                                   device)
+            inventory.set_variable(
+                device[match_inventory_hostname], "tailscale", device
+            )
 
             if overwrite_ansible_host:
-                inventory.set_variable(device[match_inventory_hostname], 
-                                       "ansible_host", 
-                                       device["ansible_host"])
-            
-
-
+                inventory.set_variable(
+                    device[match_inventory_hostname],
+                    "ansible_host",
+                    device["ansible_host"],
+                )

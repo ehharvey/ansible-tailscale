@@ -1,4 +1,4 @@
-from plugins.inventory.current_hosts import get_hosts
+from plugins.inventory.current_devices import get_hosts
 import os
 from pathlib import Path
 
@@ -12,8 +12,6 @@ def test_test():
 
     results = get_hosts(api_key, overwrite_ansible_host, match_inventory_hostname)
 
-    results_dict = {
-        d["hostname"]: d["ansible_host"] for d in results
-    }
+    results_dict = {d["hostname"]: d["ansible_host"] for d in results}
 
-    assert results_dict["l380-eharvey"] == "l380-eharvey" 
+    assert results_dict["l380-eharvey"] == "l380-eharvey"

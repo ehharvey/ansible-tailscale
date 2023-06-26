@@ -1,0 +1,37 @@
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+
+jobs:
+  test:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python 3.10
+        uses: actions/setup-python@v3
+        with:
+          python-version: "3.10"
+      
+      - name: Install dependencies
+        run: |
+            python -m pip install --upgrade pip
+            pip install flake8 pytest coverage pep8
+            pip install -r dev-requirements.txt
+
+      - name: Run tests
+        run: |
+          echo '${{ secrets.TS_API_KEY }}' > ./tests/unit/plugins/inventory/ts-api-key.txt
+          rm -rf ../ansible_collections/
+          mkdir -p ../ansible_collections/ehharvey/tailscale
+          cp -r * ../ansible_collections/ehharvey/tailscale
+          pushd ../ansible_collections/ehharvey/tailscale
+          ansible-test units --python 3.10
+          ansible-test sanity --python 3.10
+          popd
+          rm -rf ../ansible_collections
+          rm -rf ./tests/unit/plugins/inventory/ts-api-key.txt

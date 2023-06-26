@@ -1,0 +1,9 @@
+ancestor: null
+releases:
+  1.0.0:
+    plugins:
+      inventory:
+        - description: Creates a dynamic inventory from current hosts on TailScale.
+          name: current_devices
+          namespace: null
+    release_date: "2023-06-26"
