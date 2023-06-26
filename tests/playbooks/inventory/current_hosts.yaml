@@ -1,0 +1,5 @@
+---
+plugin: current_hosts
+api_key: # TODO: automate filling this in. Consider an env var
+overwrite_ansible_host: hostname
+match_inventory_hostname: hostname
